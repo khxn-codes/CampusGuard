@@ -122,7 +122,7 @@ if __name__ == "__main__":
         cv2.putText(frame, status, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
                     (0, 0, 255) if alert else (0, 255, 0), 2)
 
-        cv2.imshow("CampusGuard - Full Pipeline", frame)
+        cv2.imshow("CampusGuard", frame)
 
         prev = current
 
