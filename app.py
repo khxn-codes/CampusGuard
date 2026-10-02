@@ -2,7 +2,12 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
+import cv2
 from datetime import datetime, date
+
+from backend.detector import preprocess, detect_motion
+from backend.zones import draw_zone, check_zone_alert, is_inside_zone
+from backend.alerts import generate_alert, draw_alert
 
 st.set_page_config(
     page_title="CampusGuard",
@@ -15,8 +20,7 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 # Your backend (alerts.py) generates each alert as:
 #   {"date", "time", "location", "event_type", "severity", "status"}
-# This dashboard now uses THOSE field names everywhere instead of the old
-# "event" / "camera" / "description" / "id" fields the demo data used.
+# This dashboard uses THOSE field names everywhere.
 #
 # Point this at wherever logger.py writes the CSV. Adjust the path/column
 # names once logger.py actually exists and you know its real output format.
@@ -40,7 +44,6 @@ def load_alerts_from_log(path=LOG_FILE_PATH):
     except Exception:
         return pd.DataFrame(columns=EXPECTED_COLUMNS)
 
-    # Make sure every expected column exists even if the log is missing some
     for col in EXPECTED_COLUMNS:
         if col not in df.columns:
             df[col] = ""
@@ -87,6 +90,7 @@ page = st.sidebar.radio(
     "Navigation",
     [
         "Dashboard",
+        "Live Feed",
         "Multi-Camera",
         "Alerts",
         "Alert Review",
@@ -136,7 +140,7 @@ if page == "Dashboard":
     alerts_df = get_alert_dataframe()
 
     if alerts_df.empty:
-        st.info("No alerts logged yet. Run the backend pipeline (alerts.py) with logger.py connected to populate this dashboard.")
+        st.info("No alerts logged yet. Run the backend pipeline with logger.py connected to populate this dashboard.")
     else:
         total_alerts = len(alerts_df)
         pending = len(alerts_df[alerts_df["status"] == "Unreviewed"])
@@ -169,11 +173,72 @@ if page == "Dashboard":
                 st.error("Offline")
 
 # ---------------------------------------------------------------------------
+# Live Feed — runs the actual OpenCV backend pipeline
+# ---------------------------------------------------------------------------
+elif page == "Live Feed":
+    st.title("🎥 Live Camera Feed")
+    st.caption("Runs camera.py → detector.py → zones.py → alerts.py live, inside the dashboard.")
+
+    run = st.checkbox("Start camera", key="start_camera")
+    frame_placeholder = st.empty()
+    alert_placeholder = st.empty()
+
+    if run:
+        cap = cv2.VideoCapture(0)
+
+        if not cap.isOpened():
+            st.error("Could not open camera. Check that it's connected and not in use elsewhere.")
+        else:
+            ret, first_frame = cap.read()
+            if not ret:
+                st.error("Failed to read from camera.")
+            else:
+                prev = preprocess(first_frame)
+
+                while st.session_state.get("start_camera", False):
+                    ret, frame = cap.read()
+                    if not ret:
+                        st.error("Failed to grab frame.")
+                        break
+
+                    current = preprocess(frame)
+                    motion, boxes = detect_motion(prev, current)
+
+                    frame = draw_zone(frame)
+                    zone_alert = check_zone_alert(boxes)
+
+                    for (x, y, w, h) in boxes:
+                        color = (0, 0, 255) if is_inside_zone((x, y, w, h)) else (0, 255, 0)
+                        cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+
+                    alert = generate_alert(zone_alert, motion)
+                    frame = draw_alert(frame, alert)
+
+                    # Streamlit needs RGB, OpenCV gives BGR
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    frame_placeholder.image(frame_rgb, channels="RGB")
+
+                    if alert:
+                        alert_placeholder.error(
+                            f"🚨 {alert['event_type']} — {alert['severity']} — {alert['time']}"
+                        )
+                        # NOTE: this alert only shows on screen here.
+                        # Once logger.py exists, call it here to also write
+                        # this alert dict to logs/alerts_log.csv.
+
+                    prev = current
+
+            cap.release()
+    else:
+        frame_placeholder.info("Camera is off. Check the box above to start.")
+        st.caption("Uncheck the box or stop the Streamlit process (Ctrl+C in terminal) to release the camera.")
+
+# ---------------------------------------------------------------------------
 # Multi-Camera
 # ---------------------------------------------------------------------------
 elif page == "Multi-Camera":
     st.title("📹 Multi-Camera Monitoring")
-    st.caption("Camera status cards — connect actual video streams later.")
+    st.caption("Camera status cards — see Live Feed page for the actual video stream.")
 
     cam_cols = st.columns(2)
 
@@ -188,12 +253,7 @@ elif page == "Multi-Camera":
                 else:
                     st.error("Camera Offline")
 
-                st.info("📷 Video feed placeholder")
-
-                st.button(
-                    f"View {camera['id']}",
-                    key=f"view_{camera['id']}"
-                )
+                st.info("📷 See Live Feed page for the real video stream")
 
 # ---------------------------------------------------------------------------
 # Alerts (filtering)
