@@ -8,6 +8,9 @@ from datetime import datetime, date
 from backend.detector import preprocess, detect_motion
 from backend.zones import draw_zone, check_zone_alert, is_inside_zone
 from backend.alerts import generate_alert, draw_alert
+from logger import EventLogger
+
+event_logger = EventLogger()  # writes to logs/alerts_log.csv
 
 st.set_page_config(
     page_title="CampusGuard",
@@ -219,12 +222,10 @@ elif page == "Live Feed":
                     frame_placeholder.image(frame_rgb, channels="RGB")
 
                     if alert:
+                        event_logger.log_alert(alert)
                         alert_placeholder.error(
                             f"🚨 {alert['event_type']} — {alert['severity']} — {alert['time']}"
                         )
-                        # NOTE: this alert only shows on screen here.
-                        # Once logger.py exists, call it here to also write
-                        # this alert dict to logs/alerts_log.csv.
 
                     prev = current
 
