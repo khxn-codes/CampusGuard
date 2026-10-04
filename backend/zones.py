@@ -2,7 +2,7 @@ import cv2
 
 # Restricted zone coordinates (x1, y1) = top-left, (x2, y2) = bottom-right
 # Adjust these based on your camera's frame size and where you want the zone
-RESTRICTED_ZONE = (200, 150, 450, 400)  # x1, y1, x2, y2
+from config import RESTRICTED_ZONE
 
 
 def is_inside_zone(box, zone=RESTRICTED_ZONE):

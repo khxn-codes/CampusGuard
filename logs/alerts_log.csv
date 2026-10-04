@@ -5,3 +5,4 @@ date,time,location,event_type,severity,status
 04-10-2026,09:03:29,Camera 1,Restricted zone activity,Medium,Unreviewed
 04-10-2026,09:03:37,Camera 1,Restricted zone activity,Medium,Unreviewed
 04-10-2026,09:03:45,Camera 1,Restricted zone activity,Medium,Unreviewed
+04-10-2026,20:13:38,Camera 1,After-hours restricted zone activity,High,Unreviewed

@@ -1,7 +1,7 @@
 import csv
 import os
 
-
+from config import LOG_FILE_PATH
 class EventLogger:
     """
     Writes alert events to a CSV log.
@@ -9,7 +9,7 @@ class EventLogger:
     logs/alerts_log.csv with columns date, time, location, event_type, severity, status.
     """
 
-    def __init__(self, log_file="logs/alerts_log.csv"):
+    def __init__(self, log_file=LOG_FILE_PATH):
         self.log_file = log_file
         os.makedirs(os.path.dirname(self.log_file) or ".", exist_ok=True)
         self.pending = []

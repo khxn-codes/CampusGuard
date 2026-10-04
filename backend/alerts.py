@@ -1,12 +1,7 @@
 import cv2
 from datetime import datetime
 
-# Configure allowed hours here (24-hour format)
-ALLOWED_START_HOUR = 9    # 9:00 AM
-ALLOWED_END_HOUR = 17     # 5:00 PM
-
-# Cooldown between repeated alerts (in seconds)
-ALERT_COOLDOWN = 8
+from config import ALLOWED_START_HOUR, ALLOWED_END_HOUR, ALERT_COOLDOWN
 
 _last_alert_time = None  # tracks last time an alert was triggered
 
