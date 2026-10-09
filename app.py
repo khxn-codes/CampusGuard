@@ -4,11 +4,13 @@ import plotly.express as px
 import os
 import cv2
 from datetime import datetime, date
+from streamlit_autorefresh import st_autorefresh
 
-from backend.detector import preprocess, detect_motion
+from backend.yolo_detector import detect_persons, draw_detections
 from backend.zones import draw_zone, check_zone_alert, is_inside_zone
 from backend.alerts import generate_alert, draw_alert
 from logger import EventLogger
+from config import LOG_FILE_PATH
 
 event_logger = EventLogger()  # writes to logs/alerts_log.csv
 
@@ -27,9 +29,9 @@ st.set_page_config(
 #
 # Point this at wherever logger.py writes the CSV. Adjust the path/column
 # names once logger.py actually exists and you know its real output format.
-LOG_FILE_PATH = "logs/alerts_log.csv"
+# LOG_FILE_PATH is imported from config.py
 
-EXPECTED_COLUMNS = ["date", "time", "location", "event_type", "severity", "status"]
+EXPECTED_COLUMNS = ["date", "time", "location", "event_type", "severity", "status", "snapshot"]
 
 
 def load_alerts_from_log(path=LOG_FILE_PATH):
@@ -84,6 +86,7 @@ camera_locations = pd.DataFrame([
 st.sidebar.title("🛡️ Features")
 
 dark_mode = st.sidebar.toggle("🌙 Dark Theme", value=False)
+auto_refresh = st.sidebar.toggle("🔁 Auto-refresh (30s)", value=False)
 
 if st.sidebar.button("🔄 Reload alerts from log"):
     st.session_state.alerts_df = load_alerts_from_log()
@@ -102,6 +105,14 @@ page = st.sidebar.radio(
         "Activity Feed"
     ]
 )
+
+# Auto-refresh: only active on pages where live data matters;
+# skip on Live Feed (it has its own loop) and interactive review pages.
+_REFRESH_PAGES = {"Dashboard", "Activity Feed", "Alerts", "Analytics"}
+if auto_refresh and page in _REFRESH_PAGES:
+    refresh_count = st_autorefresh(interval=30_000, key="auto_refresh")
+    if refresh_count > 0:
+        st.session_state.alerts_df = load_alerts_from_log()
 
 if dark_mode:
     st.markdown("""
@@ -180,23 +191,32 @@ if page == "Dashboard":
 # ---------------------------------------------------------------------------
 elif page == "Live Feed":
     st.title("🎥 Live Camera Feed")
-    st.caption("Runs camera.py → detector.py → zones.py → alerts.py live, inside the dashboard.")
+    st.caption("Runs YOLOv8 person detection live in the browser.")
 
     run = st.checkbox("Start camera", key="start_camera")
     frame_placeholder = st.empty()
     alert_placeholder = st.empty()
 
     if run:
+        # Warm up the model before the loop so the first frame isn’t slow
+        with st.spinner("🤖 Loading YOLOv8 model… (one-time download ~6 MB)"):
+            from backend.yolo_detector import get_model
+            get_model()
+
         cap = cv2.VideoCapture(0)
 
         if not cap.isOpened():
-            st.error("Could not open camera. Check that it's connected and not in use elsewhere.")
+            st.error("Could not open camera. Check that it’s connected and not in use elsewhere.")
         else:
             ret, first_frame = cap.read()
             if not ret:
                 st.error("Failed to read from camera.")
             else:
-                prev = preprocess(first_frame)
+                frame_count = 0
+                last_boxes = []
+                last_motion = False
+                last_zone_alert = False
+                last_in_zone_flags = []
 
                 while st.session_state.get("start_camera", False):
                     ret, frame = cap.read()
@@ -204,35 +224,45 @@ elif page == "Live Feed":
                         st.error("Failed to grab frame.")
                         break
 
-                    current = preprocess(frame)
-                    motion, boxes = detect_motion(prev, current)
+                    frame_count += 1
 
+                    # ---- Detection (Every 3rd frame to save CPU) -----------
+                    if frame_count % 3 == 1:
+                        last_motion, last_boxes = detect_persons(frame)
+                        last_zone_alert = check_zone_alert(last_boxes)
+                        last_in_zone_flags = [is_inside_zone(b) for b in last_boxes]
+
+                    # ---- Zone overlay & check -----------------------------
                     frame = draw_zone(frame)
-                    zone_alert = check_zone_alert(boxes)
 
-                    for (x, y, w, h) in boxes:
-                        color = (0, 0, 255) if is_inside_zone((x, y, w, h)) else (0, 255, 0)
-                        cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+                    # ---- Draw boxes (YOLO uses richer labels) --------------
+                    frame = draw_detections(frame, last_boxes, last_in_zone_flags)
 
-                    alert = generate_alert(zone_alert, motion)
+                    # ---- Alert generation ---------------------------------
+                    alert = generate_alert(last_zone_alert, last_motion)
                     frame = draw_alert(frame, alert)
 
-                    # Streamlit needs RGB, OpenCV gives BGR
+                    # Streamlit needs RGB; OpenCV gives BGR
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     frame_placeholder.image(frame_rgb, channels="RGB")
 
                     if alert:
-                        event_logger.log_alert(alert)
+                        # Save a snapshot of the triggering frame
+                        snapshot_dir = os.path.join("logs", "snapshots")
+                        os.makedirs(snapshot_dir, exist_ok=True)
+                        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        snapshot_path = os.path.join(snapshot_dir, f"alert_{ts}.jpg")
+                        cv2.imwrite(snapshot_path, frame)  # BGR — correct for imwrite
+                        event_logger.log_alert(alert, snapshot_path=snapshot_path)
                         alert_placeholder.error(
                             f"🚨 {alert['event_type']} — {alert['severity']} — {alert['time']}"
                         )
-
-                    prev = current
 
             cap.release()
     else:
         frame_placeholder.info("Camera is off. Check the box above to start.")
         st.caption("Uncheck the box or stop the Streamlit process (Ctrl+C in terminal) to release the camera.")
+
 
 # ---------------------------------------------------------------------------
 # Multi-Camera
@@ -348,12 +378,22 @@ elif page == "Alert Review":
             alerts_df["id"].astype(str) == selected_id
         ].iloc[0]
 
-        st.subheader(f"Alert #{selected_alert['id']}")
-        st.write(f"**Event:** {selected_alert['event_type']}")
-        st.write(f"**Location:** {selected_alert['location']}")
-        st.write(f"**Date / Time:** {selected_alert['date']} {selected_alert['time']}")
-        st.write(f"**Severity:** {selected_alert['severity']}")
-        st.write(f"**Current Status:** {selected_alert['status']}")
+        col_info, col_snap = st.columns([1, 1])
+
+        with col_info:
+            st.subheader(f"Alert #{selected_alert['id']}")
+            st.write(f"**Event:** {selected_alert['event_type']}")
+            st.write(f"**Location:** {selected_alert['location']}")
+            st.write(f"**Date / Time:** {selected_alert['date']} {selected_alert['time']}")
+            st.write(f"**Severity:** {selected_alert['severity']}")
+            st.write(f"**Current Status:** {selected_alert['status']}")
+
+        with col_snap:
+            snapshot_val = str(selected_alert.get("snapshot", "") or "")
+            if snapshot_val and os.path.exists(snapshot_val):
+                st.image(snapshot_val, caption="📸 Alert Snapshot", use_container_width=True)
+            else:
+                st.info("No snapshot available for this alert.")
 
         review_note = st.text_area(
             "Reviewer Notes",
@@ -366,6 +406,7 @@ elif page == "Alert Review":
             if st.button("Mark Under Review"):
                 idx = alerts_df[alerts_df["id"].astype(str) == selected_id].index[0]
                 st.session_state.alerts_df.loc[idx, "status"] = "Under Review"
+                event_logger.update_status(idx, "Under Review")  # persist to CSV
                 st.session_state.activity.insert(
                     0, f"{datetime.now().strftime('%H:%M')} — Alert #{selected_id} under review"
                 )
@@ -376,13 +417,14 @@ elif page == "Alert Review":
             if st.button("Resolve Alert"):
                 idx = alerts_df[alerts_df["id"].astype(str) == selected_id].index[0]
                 st.session_state.alerts_df.loc[idx, "status"] = "Resolved"
+                event_logger.update_status(idx, "Resolved")  # persist to CSV
                 st.session_state.activity.insert(
                     0, f"{datetime.now().strftime('%H:%M')} — Alert #{selected_id} resolved"
                 )
                 st.success("Alert marked as Resolved.")
                 st.rerun()
 
-        st.caption("Note: status changes here are session-only until logger.py supports writing status updates back to the log file.")
+        st.caption("Status changes are saved to the log file and persist across sessions.")
 
 # ---------------------------------------------------------------------------
 # Campus Map

@@ -28,6 +28,20 @@ ALERT_COOLDOWN = 5
 # Where logger.py's EventLogger writes alerts
 LOG_FILE_PATH = "logs/alerts_log.csv"
 
+# ---------------------------------------------------------------------------
+# YOLOv8 Person Detection Settings
+# ---------------------------------------------------------------------------
+# Which YOLOv8 model to use. Tradeoff: speed vs. accuracy.
+#   yolov8n.pt  — nano   (~6 MB,  fastest, lowest accuracy)
+#   yolov8s.pt  — small  (~22 MB, balanced)
+#   yolov8m.pt  — medium (~50 MB, more accurate, heavier)
+YOLO_MODEL = "yolov8n.pt"
+
+# Minimum confidence score (0.0–1.0) for a YOLO detection to count.
+# Lower = more detections (more false positives).
+# Higher = fewer detections (may miss distant/partially visible people).
+YOLO_CONF_THRESHOLD = 0.40
+
 
 # ---------------------------------------------------------------------------
 # To actually wire this in (optional — nothing breaks if you don't):

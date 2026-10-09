@@ -19,20 +19,25 @@ def generate_alert(zone_alert, motion_detected):
     Combines conditions to decide alert severity.
     Returns a dict describing the event, or None if no alert.
     Applies a cooldown so the same event isn't logged repeatedly.
+
+    Severity rules:
+        High   — zone breach during after-hours
+        Medium — zone breach during allowed hours
+        Low    — general motion detected, but not inside the restricted zone
     """
     global _last_alert_time
 
-    after_hours = is_after_hours()
+    if not motion_detected:
+        return None  # nothing happening at all
 
-    if not (motion_detected and zone_alert):
-        return None  # no zone activity, nothing to alert on
-
-    # Cooldown check
+    # Cooldown check — applies to all severity levels
     now = datetime.now()
     if _last_alert_time is not None:
         elapsed = (now - _last_alert_time).total_seconds()
         if elapsed < ALERT_COOLDOWN:
             return None  # too soon since last alert
+
+    after_hours = is_after_hours()
 
     # Decide severity
     if zone_alert and after_hours:
