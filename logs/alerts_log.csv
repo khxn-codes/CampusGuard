@@ -58,3 +58,18 @@ date,time,location,event_type,severity,status
 09-10-2026,22:12:02,Camera 1,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261009_221202.jpg
 09-10-2026,22:12:07,Camera 1,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261009_221207.jpg
 09-10-2026,22:12:12,Camera 1,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261009_221212.jpg
+10-10-2026,18:50:44,Main Gate,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261010_185044.jpg
+10-10-2026,18:50:49,Main Gate,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261010_185049.jpg
+10-10-2026,18:50:54,Main Gate,General movement,Low,Unreviewed,logs\snapshots\alert_20261010_185054.jpg
+10-10-2026,18:50:59,Main Gate,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261010_185059.jpg
+10-10-2026,18:51:05,Main Gate,General movement,Low,Unreviewed,logs\snapshots\alert_20261010_185105.jpg
+10-10-2026,18:59:14,Main Gate,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\Camera 1_20261010_185914.jpg
+10-10-2026,18:59:20,Main Gate,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\Camera 1_20261010_185921.jpg
+10-10-2026,18:59:40,Main Gate,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\Camera 1_20261010_185940.jpg
+10-10-2026,19:00:02,Main Gate,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\Camera 1_20261010_190002.jpg
+01-10-2026,20:15:00,Camera 1,After-hours restricted zone activity,High,Unreviewed,
+10-10-2026,19:11:03,Main Gate,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261010_191103.jpg
+10-10-2026,19:11:08,Main Gate,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261010_191108.jpg
+10-10-2026,19:11:13,Main Gate,General movement,Low,Unreviewed,logs\snapshots\alert_20261010_191113.jpg
+10-10-2026,19:11:18,Main Gate,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261010_191118.jpg
+10-10-2026,19:11:23,Main Gate,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261010_191123.jpg

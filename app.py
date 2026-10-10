@@ -6,13 +6,14 @@ import cv2
 from datetime import datetime, date
 from streamlit_autorefresh import st_autorefresh
 
-from backend.yolo_detector import detect_persons, draw_detections
+from backend.yolo_detector import detect_persons, draw_detections, get_model
 from backend.zones import draw_zone, check_zone_alert, is_inside_zone
 from backend.alerts import generate_alert, draw_alert
 from logger import EventLogger
-from config import LOG_FILE_PATH, CAMERAS
+from config import LOG_FILE_PATH, CAMERAS, CAMERA_CONFIG
 
-event_logger = EventLogger()  # writes to logs/alerts_log.csv
+# Initialize logger
+event_logger = EventLogger()
 
 st.set_page_config(
     page_title="CampusGuard",
@@ -21,25 +22,103 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------------------------
-# Backend integration
+# Global Dark Theme (Permanent Dark Mode)
 # ---------------------------------------------------------------------------
-# Your backend (alerts.py) generates each alert as:
-#   {"date", "time", "location", "event_type", "severity", "status"}
-# This dashboard uses THOSE field names everywhere.
-#
-# Point this at wherever logger.py writes the CSV. Adjust the path/column
-# names once logger.py actually exists and you know its real output format.
-# LOG_FILE_PATH is imported from config.py
+st.markdown("""
+<style>
+/* Base Dark Mode Styling */
+.stApp {
+    background-color: #0b0f19;
+    color: #f1f5f9;
+}
 
+[data-testid="stSidebar"] {
+    background-color: #111827;
+    border-right: 1px solid #1f2937;
+}
+
+[data-testid="stSidebar"] * {
+    color: #e2e8f0;
+}
+
+/* Metric Cards */
+[data-testid="stMetric"] {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 12px 16px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+}
+
+[data-testid="stMetricValue"] {
+    color: #38bdf8 !important;
+    font-weight: 700;
+}
+
+[data-testid="stMetricLabel"] {
+    color: #94a3b8 !important;
+    font-weight: 500;
+}
+
+/* Containers & Cards */
+div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"] {
+    background: #161f30;
+    border: 1px solid #2d3748;
+    border-radius: 8px;
+}
+
+/* Modern Dark Buttons */
+.stButton > button {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    color: #ffffff;
+    border: 1px solid #3b82f6;
+    border-radius: 6px;
+    font-weight: 600;
+    transition: all 0.2s ease-in-out;
+}
+
+.stButton > button:hover {
+    background: linear-gradient(135deg, #1d4ed8, #1e40af);
+    border-color: #60a5fa;
+    color: #ffffff;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
+}
+
+/* Input Fields & Selectboxes */
+.stTextInput > div > div > input,
+.stSelectbox > div > div > div {
+    background-color: #1e293b !important;
+    color: #f8fafc !important;
+    border-color: #334155 !important;
+}
+
+/* Dataframe Styling */
+.stDataFrame {
+    border: 1px solid #1f2937;
+    border-radius: 6px;
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
+    color: #f8fafc !important;
+    letter-spacing: -0.02em;
+}
+
+hr {
+    border-color: #1f2937;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# Backend integration & Data Loading
+# ---------------------------------------------------------------------------
 EXPECTED_COLUMNS = ["date", "time", "location", "event_type", "severity", "status", "snapshot"]
 
 
 def load_alerts_from_log(path=LOG_FILE_PATH):
     """
-    Loads alerts written by the backend's logger into a DataFrame.
-    Falls back to an empty DataFrame (with the right columns) if the
-    log file doesn't exist yet, so the dashboard doesn't crash before
-    logger.py is wired up.
+    Loads alerts written by the backend logger into a DataFrame.
     """
     if not os.path.exists(path):
         return pd.DataFrame(columns=EXPECTED_COLUMNS)
@@ -54,7 +133,7 @@ def load_alerts_from_log(path=LOG_FILE_PATH):
             df[col] = ""
 
     df = df[EXPECTED_COLUMNS].reset_index(drop=True)
-    df.insert(0, "id", df.index + 1)  # id is generated here, not stored in the log
+    df.insert(0, "id", df.index + 1)
     return df
 
 
@@ -71,33 +150,26 @@ if "activity" not in st.session_state:
             f"{row['time']} — {row['event_type']} at {row['location']}"
         )
 
-# Build runtime camera list from config.py — single source of truth
-cameras = [
-    {"id": cam["id"], "location": cam["location"], "status": "Online"}
-    for cam in CAMERAS
-]
-
-# Placeholder lat/lon for campus map — update with real coordinates
+# Camera configuration (Single Camera)
+active_camera = CAMERA_CONFIG
 _CAMERA_COORDS = {
     "Camera 1": {"lat": 26.5000, "lon": 80.2000},
-    "Camera 2": {"lat": 26.5010, "lon": 80.2010},
 }
 camera_locations = pd.DataFrame([
     {
-        "Camera": cam["id"],
-        "Location": cam["location"],
-        "lat": _CAMERA_COORDS.get(cam["id"], {"lat": 26.5000}).get("lat", 26.5000),
-        "lon": _CAMERA_COORDS.get(cam["id"], {"lon": 80.2000}).get("lon", 80.2000),
+        "Camera": active_camera["id"],
+        "Location": active_camera["location"],
+        "lat": _CAMERA_COORDS.get(active_camera["id"], {}).get("lat", 26.5000),
+        "lon": _CAMERA_COORDS.get(active_camera["id"], {}).get("lon", 80.2000),
     }
-    for cam in CAMERAS
 ])
 
 # ---------------------------------------------------------------------------
-# Sidebar / theme
+# Sidebar Navigation (Dedicated Dark Mode)
 # ---------------------------------------------------------------------------
-st.sidebar.title("🛡️ Features")
+st.sidebar.title("🛡️ CampusGuard")
+st.sidebar.caption("AI Campus Security System")
 
-dark_mode = st.sidebar.toggle("🌙 Dark Theme", value=False)
 auto_refresh = st.sidebar.toggle("🔁 Auto-refresh (30s)", value=False)
 
 if st.sidebar.button("🔄 Reload alerts from log"):
@@ -109,7 +181,6 @@ page = st.sidebar.radio(
     [
         "Dashboard",
         "Live Feed",
-        "Multi-Camera",
         "Alerts",
         "Alert Review",
         "Campus Map",
@@ -118,38 +189,12 @@ page = st.sidebar.radio(
     ]
 )
 
-# Auto-refresh: only active on pages where live data matters;
-# skip on Live Feed (it has its own loop) and interactive review pages.
+# Auto-refresh handler for data pages
 _REFRESH_PAGES = {"Dashboard", "Activity Feed", "Alerts", "Analytics"}
 if auto_refresh and page in _REFRESH_PAGES:
     refresh_count = st_autorefresh(interval=30_000, key="auto_refresh")
     if refresh_count > 0:
         st.session_state.alerts_df = load_alerts_from_log()
-
-if dark_mode:
-    st.markdown("""
-        <style>
-        .stApp {
-            background-color: #101827;
-            color: #F1F5F9;
-        }
-        [data-testid="stSidebar"] {
-            background-color: #172235;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-else:
-    st.markdown("""
-        <style>
-        .stApp {
-            background-color: #F5F7FB;
-            color: #172033;
-        }
-        [data-testid="stSidebar"] {
-            background-color: #E8EEF7;
-        }
-        </style>
-    """, unsafe_allow_html=True)
 
 
 def get_alert_dataframe():
@@ -166,18 +211,17 @@ if page == "Dashboard":
     alerts_df = get_alert_dataframe()
 
     if alerts_df.empty:
-        st.info("No alerts logged yet. Run the backend pipeline with logger.py connected to populate this dashboard.")
+        st.info("No alerts logged yet. Run the Live Feed detection pipeline to record alerts.")
     else:
         total_alerts = len(alerts_df)
         pending = len(alerts_df[alerts_df["status"] == "Unreviewed"])
         high_alerts = len(alerts_df[alerts_df["severity"] == "High"])
-        online_cameras = len([c for c in cameras if c["status"] == "Online"])
 
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total Alerts", total_alerts)
         col2.metric("Unreviewed Alerts", pending)
         col3.metric("High Severity", high_alerts)
-        col4.metric("Cameras Online", f"{online_cameras}/{len(cameras)}")
+        col4.metric("Camera Status", "Online (1/1)")
 
         st.subheader("Recent Security Alerts")
         st.dataframe(
@@ -186,124 +230,101 @@ if page == "Dashboard":
             hide_index=True
         )
 
-    st.subheader("Camera Status")
-    cam_cols = st.columns(len(cameras))
+    st.subheader("Active Camera")
+    with st.container(border=True):
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c1:
+            st.markdown(f"**{active_camera['id']}**")
+        with c2:
+            st.write(f"📍 **Location:** {active_camera['location']} (Source: {active_camera['source']})")
+        with c3:
+            st.success("🟢 Online")
 
-    for i, camera in enumerate(cameras):
-        with cam_cols[i]:
-            st.markdown(f"**{camera['id']}**")
-            st.write(camera["location"])
-            if camera["status"] == "Online":
-                st.success("Online")
-            else:
-                st.error("Offline")
 
 # ---------------------------------------------------------------------------
-# Live Feed — runs the actual OpenCV backend pipeline
+# Live Feed — Dedicated Single Camera Stream
 # ---------------------------------------------------------------------------
 elif page == "Live Feed":
     st.title("🎥 Live Camera Feed")
-    st.caption("Runs YOLOv8 person detection live in the browser.")
+    st.caption(f"Monitoring **{active_camera['id']}** ({active_camera['location']}) with YOLOv8 person detection and restricted zone monitoring.")
 
-    run = st.checkbox("Start camera", key="start_camera")
+    cam_cfg = active_camera
+    zone_relative = cam_cfg["zone"]
+    cam_location = cam_cfg["location"]
+    cam_id = cam_cfg["id"]
+
+    col_ctrl, col_status = st.columns([1, 3])
+    with col_ctrl:
+        run = st.toggle("▶ Start Camera", key="start_camera")
+
     frame_placeholder = st.empty()
     alert_placeholder = st.empty()
 
     if run:
-        # Use first camera in config for the live feed
-        cam_cfg = CAMERAS[0]
-        zone_relative = cam_cfg["zone"]
-        cam_location = cam_cfg["location"]
-        cam_id = cam_cfg["id"]
+        with col_status:
+            st.caption(f"🟢 **{cam_id}** — {cam_location} | Pipeline Active")
 
-        # Warm up the model before the loop so the first frame isn't slow
         with st.spinner("🤖 Loading YOLOv8 model… (one-time download ~6 MB)"):
-            from backend.yolo_detector import get_model
             get_model()
+
         cap = cv2.VideoCapture(cam_cfg["source"])
 
         if not cap.isOpened():
-            st.error("Could not open camera. Check that it's connected and not in use elsewhere.")
+            st.error("Could not open camera. Check that it is connected and not in use elsewhere.")
         else:
-            ret, first_frame = cap.read()
-            if not ret:
-                st.error("Failed to read from camera.")
-            else:
-                frame_count = 0
-                last_boxes = []
-                last_motion = False
-                last_zone_alert = False
-                last_in_zone_flags = []
+            frame_count = 0
+            last_boxes = []
+            last_motion = False
+            last_zone_alert = False
+            last_in_zone_flags = []
 
-                while st.session_state.get("start_camera", False):
-                    ret, frame = cap.read()
-                    if not ret:
-                        st.error("Failed to grab frame.")
-                        break
+            while st.session_state.get("start_camera", False):
+                ret, frame = cap.read()
+                if not ret:
+                    st.error("Failed to grab frame from camera.")
+                    break
 
-                    frame_count += 1
+                frame_count += 1
 
-                    # ---- Detection (Every 3rd frame to save CPU) -----------
-                    if frame_count % 3 == 1:
-                        last_motion, last_boxes = detect_persons(frame)
-                        last_zone_alert = check_zone_alert(last_boxes, frame.shape, zone_relative)
-                        last_in_zone_flags = [
-                            is_inside_zone(b, frame.shape, zone_relative) for b in last_boxes
-                        ]
+                # ---- Detection (Every 3rd frame to optimize CPU performance) -----------
+                if frame_count % 3 == 1:
+                    last_motion, last_boxes = detect_persons(frame)
+                    last_zone_alert = check_zone_alert(last_boxes, frame.shape, zone_relative)
+                    last_in_zone_flags = [
+                        is_inside_zone(b, frame.shape, zone_relative) for b in last_boxes
+                    ]
 
-                    # ---- Zone overlay & check -----------------------------
-                    frame = draw_zone(frame, zone_relative)
+                # ---- Restricted zone overlay -----------------------------
+                frame = draw_zone(frame, zone_relative)
 
-                    # ---- Draw boxes (YOLO uses richer labels) --------------
-                    frame = draw_detections(frame, last_boxes, last_in_zone_flags)
+                # ---- Bounding boxes --------------------------------------
+                frame = draw_detections(frame, last_boxes, last_in_zone_flags)
 
-                    # ---- Alert generation ---------------------------------
-                    alert = generate_alert(last_zone_alert, last_motion, location=cam_location)
-                    frame = draw_alert(frame, alert)
+                # ---- Alert generation -----------------------------------
+                alert = generate_alert(last_zone_alert, last_motion, location=cam_location)
+                frame = draw_alert(frame, alert)
 
-                    # Streamlit needs RGB; OpenCV gives BGR
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    frame_placeholder.image(frame_rgb, channels="RGB")
+                # Convert BGR to RGB for Streamlit rendering
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame_placeholder.image(frame_rgb, channels="RGB", use_container_width=True)
 
-                    if alert:
-                        # Save a snapshot of the triggering frame
-                        snapshot_dir = os.path.join("logs", "snapshots")
-                        os.makedirs(snapshot_dir, exist_ok=True)
-                        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        snapshot_path = os.path.join(snapshot_dir, f"alert_{ts}.jpg")
-                        cv2.imwrite(snapshot_path, frame)  # BGR — correct for imwrite
-                        event_logger.log_alert(alert, snapshot_path=snapshot_path)
-                        alert_placeholder.error(
-                            f"🚨 {alert['event_type']} — {alert['severity']} — {alert['time']}"
-                        )
+                if alert:
+                    snapshot_dir = os.path.join("logs", "snapshots")
+                    os.makedirs(snapshot_dir, exist_ok=True)
+                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    snapshot_path = os.path.join(snapshot_dir, f"alert_{ts}.jpg")
+                    cv2.imwrite(snapshot_path, frame)
+                    event_logger.log_alert(alert, snapshot_path=snapshot_path)
+                    alert_placeholder.error(
+                        f"🚨 {alert['event_type']} — {alert['severity']} — {alert['time']}"
+                    )
 
             cap.release()
     else:
-        frame_placeholder.info("Camera is off. Check the box above to start.")
-        st.caption("Uncheck the box or stop the Streamlit process (Ctrl+C in terminal) to release the camera.")
+        with col_status:
+            st.caption(f"⚪ **{cam_id}** is idle")
+        frame_placeholder.info("Camera is off. Toggle the switch above to start streaming.")
 
-
-# ---------------------------------------------------------------------------
-# Multi-Camera
-# ---------------------------------------------------------------------------
-elif page == "Multi-Camera":
-    st.title("📹 Multi-Camera Monitoring")
-    st.caption("Camera status cards — see Live Feed page for the actual video stream.")
-
-    cam_cols = st.columns(2)
-
-    for i, camera in enumerate(cameras):
-        with cam_cols[i % 2]:
-            with st.container(border=True):
-                st.subheader(camera["id"])
-                st.write(f"📍 Location: {camera['location']}")
-
-                if camera["status"] == "Online":
-                    st.success("Camera Online")
-                else:
-                    st.error("Camera Offline")
-
-                st.info("📷 See Live Feed page for the real video stream")
 
 # ---------------------------------------------------------------------------
 # Alerts (filtering)
@@ -375,6 +396,7 @@ elif page == "Alerts":
             mime="text/csv"
         )
 
+
 # ---------------------------------------------------------------------------
 # Alert Review
 # ---------------------------------------------------------------------------
@@ -445,24 +467,26 @@ elif page == "Alert Review":
 
         st.caption("Status changes are saved to the log file and persist across sessions.")
 
+
 # ---------------------------------------------------------------------------
 # Campus Map
 # ---------------------------------------------------------------------------
 elif page == "Campus Map":
-    st.title("🗺️ Campus Camera Locations")
-    st.caption("Replace them with authorized campus camera coordinates.")
+    st.title("🗺️ Campus Camera Location")
+    st.caption("Monitoring point location on campus.")
 
     st.map(camera_locations, latitude="lat", longitude="lon")
 
-    st.subheader("Camera Location List")
+    st.subheader("Camera Location Details")
     st.dataframe(
         camera_locations[["Camera", "Location"]],
         use_container_width=True,
         hide_index=True
     )
 
+
 # ---------------------------------------------------------------------------
-# Analytics
+# Analytics (Themed in Dark Mode)
 # ---------------------------------------------------------------------------
 elif page == "Analytics":
     st.title("📊 Security Analytics")
@@ -487,7 +511,14 @@ elif page == "Analytics":
                 x="Severity",
                 y="Count",
                 color="Severity",
-                title="Alert Severity"
+                title="Alert Severity Breakdown",
+                color_discrete_map={"High": "#EF4444", "Medium": "#F59E0B", "Low": "#10B981"},
+                template="plotly_dark"
+            )
+            fig1.update_layout(
+                paper_bgcolor="#111827",
+                plot_bgcolor="#111827",
+                font=dict(color="#F1F5F9")
             )
             st.plotly_chart(fig1, use_container_width=True)
 
@@ -503,7 +534,13 @@ elif page == "Analytics":
                 event_counts,
                 names="Event",
                 values="Count",
-                title="Event Distribution"
+                title="Event Distribution",
+                template="plotly_dark",
+                color_discrete_sequence=px.colors.sequential.Tealgrn
+            )
+            fig2.update_layout(
+                paper_bgcolor="#111827",
+                font=dict(color="#F1F5F9")
             )
             st.plotly_chart(fig2, use_container_width=True)
 
@@ -518,9 +555,17 @@ elif page == "Analytics":
             location_counts,
             x="Location",
             y="Count",
-            title="Alerts by Campus Location"
+            title="Alerts by Campus Location",
+            template="plotly_dark",
+            color_discrete_sequence=["#38BDF8"]
+        )
+        fig3.update_layout(
+            paper_bgcolor="#111827",
+            plot_bgcolor="#111827",
+            font=dict(color="#F1F5F9")
         )
         st.plotly_chart(fig3, use_container_width=True)
+
 
 # ---------------------------------------------------------------------------
 # Activity Feed

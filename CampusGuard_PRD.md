@@ -1,6 +1,6 @@
 # CampusGuard — Product Requirements Document (PRD)
 
-**Version:** 1.1  
+**Version:** 1.3  
 **Date:** October 2026  
 **Status:** Active Development  
 **Team:** Shahnawaz Khan · Lakshya Mohan Bajpai · Manya Saxena · Shweta Singh
@@ -13,6 +13,8 @@
 |---|---|---|
 | 1.0 | Oct 2026 | Initial PRD — full v1.0 scope, known bugs documented |
 | 1.1 | Oct 2026 | All v1.0 bugs resolved; Phase 2 & 4 features implemented; `detector.py` added; `requirements.txt` fixed; `camera.py` and `app.py` wired to `config.py` |
+| 1.2 | Oct 2026 | Phase 3 multi-camera worker exploration |
+| 1.3 | Oct 2026 | Multi-camera support completely removed; dedicated single-camera pipeline enforced; Light mode completely removed with permanent dark mode theme enforced |
 
 ---
 
@@ -47,11 +49,11 @@ CampusGuard addresses these with a low-cost, software-first approach running on 
 
 ---
 
-## 4. Scope — Current Version (v1.1)
+## 4. Scope — Current Version (v1.3)
 
 ### 4.1 In Scope (Implemented & Working)
 
-- Single-camera live feed via OpenCV (default webcam, index 0)
+- Single-camera live feed via OpenCV (default webcam, index 0, configured in `config.py`)
 - **YOLOv8 person detection** (replaces frame-differencing; `yolov8n.pt` default model)
 - Frame-differencing motion detection as a lightweight fallback (`backend/detector.py`)
 - Restricted zone definition via **relative coordinates** (0.0–1.0 fractions of frame size) in `config.py` — resolution-independent
@@ -59,23 +61,24 @@ CampusGuard addresses these with a low-cost, software-first approach running on 
   - **High** — zone breach during after-hours
   - **Medium** — zone breach during allowed hours
   - **Low** — general motion, not in zone (now fully reachable)
-- Alert cooldown (configurable, default 5 seconds), per-camera
+- Alert cooldown (configurable, default 5 seconds)
 - CSV-based alert persistence (`logs/alerts_log.csv`) with retry buffering
 - **Alert snapshots** — JPEG saved to `logs/snapshots/` on each alert; displayed in Alert Review
 - **Status write-back** — `EventLogger.update_status()` persists status changes to CSV
-- Streamlit dashboard with 8 pages: Dashboard, Live Feed, Multi-Camera, Alerts, Alert Review, Campus Map, Analytics, Activity Feed
-- Dark / light theme toggle
+- Streamlit dashboard with 7 pages: Dashboard, Live Feed, Alerts, Alert Review, Campus Map, Analytics, Activity Feed
+- **Permanent Dark Mode** — custom high-contrast dark theme configured in `.streamlit/config.toml`, injected CSS, and Plotly charts (Light mode completely removed)
 - Auto-refresh (30s) for Dashboard, Alerts, Analytics, Activity Feed pages
 - Alert filtering by severity, status, event type, location
 - Free-text alert search
 - CSV export of filtered alerts
-- Plotly analytics charts (severity bar, event type pie, location bar)
+- Plotly analytics charts (severity bar, event type pie, location bar) with dark theme styling
 - `st.map` camera location viewer
 - All settings centralized in `config.py`; no duplicate definitions in `app.py`
 
-### 4.2 Out of Scope (v1.1)
+### 4.2 Out of Scope (v1.3)
 
-- Multi-camera live streams (camera status cards shown; live stream limited to Camera 1)
+- Multi-camera live streams (completely out of scope; dedicated single-camera architecture)
+- Light mode / theme toggle (completely removed; dark theme only)
 - User authentication / role-based access
 - Push notifications (email/SMS/webhook)
 - Face detection / anonymization
@@ -138,7 +141,7 @@ CampusGuard addresses these with a low-cost, software-first approach running on 
 | FE-09 | Analytics page SHALL show severity distribution, event type distribution, and location distribution charts | P1 | ✅ Done |
 | FE-10 | Campus Map page SHALL show camera locations on an interactive map | P2 | ✅ Done |
 | FE-11 | Activity Feed SHALL show a chronological list of all logged events | P2 | ✅ Done |
-| FE-12 | Dashboard SHALL support dark and light themes | P2 | ✅ Done |
+| FE-12 | Dashboard SHALL use a permanent high-contrast Dark Mode theme (Light mode completely removed) | P2 | ✅ Done |
 | FE-13 | Alert Review page SHALL display snapshot image when available | P1 | ✅ Done |
 | FE-14 | Dashboard SHALL auto-refresh on a configurable interval (sidebar toggle) | P2 | ✅ Done |
 
@@ -224,13 +227,13 @@ CampusGuard addresses these with a low-cost, software-first approach running on 
 | **Config deduplication** | Remove `LOG_FILE_PATH` duplicate from `app.py` | P1 | ✅ Done |
 | **Auto-reload on new alerts** | `st_autorefresh` on Dashboard/Alerts/Analytics/Activity Feed | P2 | ✅ Done |
 
-### Phase 3 — Multi-Camera Support
+### Phase 3 — Streamlined Single-Camera Architecture & UI Hardening *(Completed)*
 
-| Feature | Description |
-|---|---|
-| **Multiple live streams** | Support N cameras; each with its own YOLO pipeline running in a thread |
-| **Multi-camera dashboard** | Show all feeds in a grid; per-camera alert counts and status indicators |
-| **Per-camera alert context** | Dynamic camera ID per stream (foundation already in `CAMERAS` config) |
+| Feature | Description | Status |
+|---|---|---|
+| **Single-camera dedicated pipeline** | Removed multi-camera thread overhead; focused on low-latency, robust single-camera streaming | ✅ Done |
+| **Permanent Dark Theme** | Enforced dark theme across `.streamlit/config.toml`, custom CSS, and Plotly charts; light mode retired | ✅ Done |
+| **Clean navigation structure** | Streamlined 7-page dashboard navigation without multi-camera placeholders | ✅ Done |
 
 ### Phase 4 — AI & Detection Upgrades *(partially complete)*
 
