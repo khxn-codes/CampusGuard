@@ -24,8 +24,29 @@ class EventLogger:
 
     def _ensure_file(self):
         if not os.path.exists(self.log_file):
-            with open(self.log_file, mode="w", newline="") as f:
+            with open(self.log_file, mode="w", newline="", encoding="utf-8") as f:
                 csv.writer(f).writerow(self.COLUMNS)
+        else:
+            try:
+                with open(self.log_file, mode="r", newline="", encoding="utf-8") as f:
+                    first_line = f.readline().strip()
+                if first_line and first_line != ",".join(self.COLUMNS):
+                    with open(self.log_file, mode="r", newline="", encoding="utf-8") as f:
+                        reader = csv.reader(f)
+                        header = next(reader, None)
+                        rows = []
+                        for r in reader:
+                            if not r or not any(r):
+                                continue
+                            while len(r) < len(self.COLUMNS):
+                                r.append("")
+                            rows.append(r[:len(self.COLUMNS)])
+                    with open(self.log_file, mode="w", newline="", encoding="utf-8") as f:
+                        writer = csv.writer(f)
+                        writer.writerow(self.COLUMNS)
+                        writer.writerows(rows)
+            except Exception as e:
+                print(f"[LOGGER] Header check note: {e}")
 
     def log_event(
         self,
@@ -88,7 +109,7 @@ class EventLogger:
         bool  — True on success, False if the write failed.
         """
         try:
-            df = pd.read_csv(self.log_file)
+            df = pd.read_csv(self.log_file, on_bad_lines="skip")
             # Add missing columns for files created before the snapshot field existed
             for col in self.COLUMNS:
                 if col not in df.columns:
@@ -97,8 +118,8 @@ class EventLogger:
                 print(f"[LOGGER] update_status: index {row_index} out of range.")
                 return False
             df.at[row_index, "status"] = new_status
-            df.to_csv(self.log_file, index=False)
-            print(f"[LOGGER] Row {row_index} status → '{new_status}'")
+            df.to_csv(self.log_file, index=False, encoding="utf-8")
+            print(f"[LOGGER] Row {row_index} status -> '{new_status}'")
             return True
         except Exception as e:
             print(f"[LOGGER] update_status failed: {e}")

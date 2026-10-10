@@ -14,7 +14,7 @@
 | 1.0 | Oct 2026 | Initial PRD — full v1.0 scope, known bugs documented |
 | 1.1 | Oct 2026 | All v1.0 bugs resolved; Phase 2 & 4 features implemented; `detector.py` added; `requirements.txt` fixed; `camera.py` and `app.py` wired to `config.py` |
 | 1.2 | Oct 2026 | Phase 3 multi-camera worker exploration |
-| 1.3 | Oct 2026 | Multi-camera support completely removed; dedicated single-camera pipeline enforced; Light mode completely removed with permanent dark mode theme enforced |
+| 1.3 | Oct 2026 | Multi-camera support completely removed; dedicated single-camera pipeline enforced; Light mode completely removed with permanent dark mode theme enforced; CSV schema migration & Windows UTF-8 encoding fix implemented (BUG-09) |
 
 ---
 
@@ -180,6 +180,7 @@ CampusGuard addresses these with a low-cost, software-first approach running on 
 | BUG-06 | `backend/detector.py` missing — referenced in architecture diagram but not created | Medium | ✅ **Fixed** — frame-differencing detector added |
 | BUG-07 | `camera.py` hardcoded `VideoCapture(0)` instead of reading from `CAMERAS` config | Low | ✅ **Fixed** — `camera.py` now reads camera source from `config.CAMERAS` |
 | BUG-08 | `app.py` Live Feed called `check_zone_alert`, `is_inside_zone`, `draw_zone` without `zone_relative` arg | High | ✅ **Fixed** — all three calls now pass `zone_relative` from `CAMERAS[0]` config |
+| BUG-09 | CSV column mismatch (6-column header vs 7-column rows with snapshot) crashed `pd.read_csv`, leaving Dashboard and Alert Review blank | High | ✅ **Fixed** — standardized `alerts_log.csv` to 7 columns; made `load_alerts_from_log()` fault-tolerant with fallback parser; fixed Windows charmap encoding in `EventLogger.update_status()` |
 
 ---
 

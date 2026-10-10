@@ -119,22 +119,39 @@ EXPECTED_COLUMNS = ["date", "time", "location", "event_type", "severity", "statu
 def load_alerts_from_log(path=LOG_FILE_PATH):
     """
     Loads alerts written by the backend logger into a DataFrame.
+    Resilient to legacy row formats or inconsistent delimiters.
     """
     if not os.path.exists(path):
         return pd.DataFrame(columns=EXPECTED_COLUMNS)
 
     try:
-        df = pd.read_csv(path)
-    except Exception:
+        df = pd.read_csv(path, on_bad_lines="skip")
+        for col in EXPECTED_COLUMNS:
+            if col not in df.columns:
+                df[col] = ""
+        df = df[EXPECTED_COLUMNS].reset_index(drop=True)
+        df.insert(0, "id", df.index + 1)
+        return df
+    except Exception as e:
+        try:
+            import csv
+            rows = []
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                reader = csv.reader(f)
+                header = next(reader, None)
+                for r in reader:
+                    if not r or not any(r):
+                        continue
+                    while len(r) < len(EXPECTED_COLUMNS):
+                        r.append("")
+                    rows.append(r[:len(EXPECTED_COLUMNS)])
+            if rows:
+                df = pd.DataFrame(rows, columns=EXPECTED_COLUMNS)
+                df.insert(0, "id", df.index + 1)
+                return df
+        except Exception:
+            pass
         return pd.DataFrame(columns=EXPECTED_COLUMNS)
-
-    for col in EXPECTED_COLUMNS:
-        if col not in df.columns:
-            df[col] = ""
-
-    df = df[EXPECTED_COLUMNS].reset_index(drop=True)
-    df.insert(0, "id", df.index + 1)
-    return df
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +214,9 @@ if auto_refresh and page in _REFRESH_PAGES:
         st.session_state.alerts_df = load_alerts_from_log()
 
 
-def get_alert_dataframe():
+def get_alert_dataframe(force_reload=False):
+    if force_reload or "alerts_df" not in st.session_state or st.session_state.alerts_df.empty:
+        st.session_state.alerts_df = load_alerts_from_log()
     return st.session_state.alerts_df
 
 
@@ -315,6 +334,25 @@ elif page == "Live Feed":
                     snapshot_path = os.path.join(snapshot_dir, f"alert_{ts}.jpg")
                     cv2.imwrite(snapshot_path, frame)
                     event_logger.log_alert(alert, snapshot_path=snapshot_path)
+
+                    new_alert_row = {
+                        "id": len(st.session_state.alerts_df) + 1,
+                        "date": alert["date"],
+                        "time": alert["time"],
+                        "location": alert["location"],
+                        "event_type": alert["event_type"],
+                        "severity": alert["severity"],
+                        "status": alert["status"],
+                        "snapshot": snapshot_path,
+                    }
+                    st.session_state.alerts_df = pd.concat(
+                        [st.session_state.alerts_df, pd.DataFrame([new_alert_row])],
+                        ignore_index=True
+                    )
+                    st.session_state.activity.insert(
+                        0, f"{alert['time']} — {alert['event_type']} at {alert['location']}"
+                    )
+
                     alert_placeholder.error(
                         f"🚨 {alert['event_type']} — {alert['severity']} — {alert['time']}"
                     )
@@ -430,7 +468,9 @@ elif page == "Alert Review":
             st.write(f"**Current Status:** {selected_alert['status']}")
 
         with col_snap:
-            snapshot_val = str(selected_alert.get("snapshot", "") or "")
+            snapshot_val = str(selected_alert.get("snapshot", "") or "").strip()
+            if snapshot_val.lower() == "nan":
+                snapshot_val = ""
             if snapshot_val and os.path.exists(snapshot_val):
                 st.image(snapshot_val, caption="📸 Alert Snapshot", use_container_width=True)
             else:
