@@ -111,7 +111,7 @@ if __name__ == "__main__":
         motion, boxes = detect_persons(frame)
         frame = draw_zone(frame)
 
-        in_zone_flags = [is_inside_zone(b) for b in boxes]
+        in_zone_flags = [is_inside_zone(b, frame.shape) for b in boxes]
         frame = draw_detections(frame, boxes, in_zone_flags)
 
         zone_alert = any(in_zone_flags)

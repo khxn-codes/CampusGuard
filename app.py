@@ -10,7 +10,7 @@ from backend.yolo_detector import detect_persons, draw_detections
 from backend.zones import draw_zone, check_zone_alert, is_inside_zone
 from backend.alerts import generate_alert, draw_alert
 from logger import EventLogger
-from config import LOG_FILE_PATH
+from config import LOG_FILE_PATH, CAMERAS
 
 event_logger = EventLogger()  # writes to logs/alerts_log.csv
 
@@ -71,13 +71,25 @@ if "activity" not in st.session_state:
             f"{row['time']} — {row['event_type']} at {row['location']}"
         )
 
+# Build runtime camera list from config.py — single source of truth
 cameras = [
-    {"id": "Camera 1", "location": "Main Gate", "status": "Online"},
+    {"id": cam["id"], "location": cam["location"], "status": "Online"}
+    for cam in CAMERAS
 ]
 
+# Placeholder lat/lon for campus map — update with real coordinates
+_CAMERA_COORDS = {
+    "Camera 1": {"lat": 26.5000, "lon": 80.2000},
+    "Camera 2": {"lat": 26.5010, "lon": 80.2010},
+}
 camera_locations = pd.DataFrame([
-    {"Camera": "Camera 1", "Location": "Main Gate",
-     "lat": 26.5000, "lon": 80.2000},
+    {
+        "Camera": cam["id"],
+        "Location": cam["location"],
+        "lat": _CAMERA_COORDS.get(cam["id"], {"lat": 26.5000}).get("lat", 26.5000),
+        "lon": _CAMERA_COORDS.get(cam["id"], {"lon": 80.2000}).get("lon", 80.2000),
+    }
+    for cam in CAMERAS
 ])
 
 # ---------------------------------------------------------------------------
@@ -198,15 +210,20 @@ elif page == "Live Feed":
     alert_placeholder = st.empty()
 
     if run:
-        # Warm up the model before the loop so the first frame isn’t slow
+        # Use first camera in config for the live feed
+        cam_cfg = CAMERAS[0]
+        zone_relative = cam_cfg["zone"]
+        cam_location = cam_cfg["location"]
+        cam_id = cam_cfg["id"]
+
+        # Warm up the model before the loop so the first frame isn't slow
         with st.spinner("🤖 Loading YOLOv8 model… (one-time download ~6 MB)"):
             from backend.yolo_detector import get_model
             get_model()
-
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(cam_cfg["source"])
 
         if not cap.isOpened():
-            st.error("Could not open camera. Check that it’s connected and not in use elsewhere.")
+            st.error("Could not open camera. Check that it's connected and not in use elsewhere.")
         else:
             ret, first_frame = cap.read()
             if not ret:
@@ -229,17 +246,19 @@ elif page == "Live Feed":
                     # ---- Detection (Every 3rd frame to save CPU) -----------
                     if frame_count % 3 == 1:
                         last_motion, last_boxes = detect_persons(frame)
-                        last_zone_alert = check_zone_alert(last_boxes)
-                        last_in_zone_flags = [is_inside_zone(b) for b in last_boxes]
+                        last_zone_alert = check_zone_alert(last_boxes, frame.shape, zone_relative)
+                        last_in_zone_flags = [
+                            is_inside_zone(b, frame.shape, zone_relative) for b in last_boxes
+                        ]
 
                     # ---- Zone overlay & check -----------------------------
-                    frame = draw_zone(frame)
+                    frame = draw_zone(frame, zone_relative)
 
                     # ---- Draw boxes (YOLO uses richer labels) --------------
                     frame = draw_detections(frame, last_boxes, last_in_zone_flags)
 
                     # ---- Alert generation ---------------------------------
-                    alert = generate_alert(last_zone_alert, last_motion)
+                    alert = generate_alert(last_zone_alert, last_motion, location=cam_location)
                     frame = draw_alert(frame, alert)
 
                     # Streamlit needs RGB; OpenCV gives BGR

@@ -3,7 +3,7 @@ from datetime import datetime
 
 from config import ALLOWED_START_HOUR, ALLOWED_END_HOUR, ALERT_COOLDOWN
 
-_last_alert_time = None  # tracks last time an alert was triggered
+_last_alert_times = {}  # tracks last time an alert was triggered, per location
 
 
 def is_after_hours():
@@ -14,28 +14,29 @@ def is_after_hours():
     return not (ALLOWED_START_HOUR <= current_hour < ALLOWED_END_HOUR)
 
 
-def generate_alert(zone_alert, motion_detected):
+def generate_alert(zone_alert, motion_detected, location="Camera 1"):
     """
     Combines conditions to decide alert severity.
     Returns a dict describing the event, or None if no alert.
-    Applies a cooldown so the same event isn't logged repeatedly.
+    Applies a per-camera cooldown so the same event isn't logged repeatedly.
 
     Severity rules:
         High   — zone breach during after-hours
         Medium — zone breach during allowed hours
         Low    — general motion detected, but not inside the restricted zone
     """
-    global _last_alert_time
+    global _last_alert_times
 
     if not motion_detected:
         return None  # nothing happening at all
 
     # Cooldown check — applies to all severity levels
     now = datetime.now()
-    if _last_alert_time is not None:
-        elapsed = (now - _last_alert_time).total_seconds()
+    last_time = _last_alert_times.get(location)
+    if last_time is not None:
+        elapsed = (now - last_time).total_seconds()
         if elapsed < ALERT_COOLDOWN:
-            return None  # too soon since last alert
+            return None  # too soon since last alert for this camera
 
     after_hours = is_after_hours()
 
@@ -50,12 +51,12 @@ def generate_alert(zone_alert, motion_detected):
         severity = "Low"
         event_type = "General movement"
 
-    _last_alert_time = now
+    _last_alert_times[location] = now
 
     return {
         "date": now.strftime("%d-%m-%Y"),
         "time": now.strftime("%H:%M:%S"),
-        "location": "Camera 1",       # placeholder, update per camera later
+        "location": location,
         "event_type": event_type,
         "severity": severity,
         "status": "Unreviewed"

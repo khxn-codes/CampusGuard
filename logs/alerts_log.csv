@@ -52,3 +52,9 @@ date,time,location,event_type,severity,status
 09-10-2026,22:02:18,Camera 1,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261009_220218.jpg
 09-10-2026,22:02:23,Camera 1,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261009_220223.jpg
 09-10-2026,22:02:28,Camera 1,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261009_220228.jpg
+09-10-2026,22:11:47,Camera 1,General movement,Low,Unreviewed,logs\snapshots\alert_20261009_221147.jpg
+09-10-2026,22:11:52,Camera 1,General movement,Low,Unreviewed,logs\snapshots\alert_20261009_221152.jpg
+09-10-2026,22:11:57,Camera 1,General movement,Low,Unreviewed,logs\snapshots\alert_20261009_221157.jpg
+09-10-2026,22:12:02,Camera 1,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261009_221202.jpg
+09-10-2026,22:12:07,Camera 1,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261009_221207.jpg
+09-10-2026,22:12:12,Camera 1,After-hours restricted zone activity,High,Unreviewed,logs\snapshots\alert_20261009_221212.jpg

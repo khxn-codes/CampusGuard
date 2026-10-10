@@ -8,15 +8,28 @@ locally. See the bottom of this file for exactly what to change in each to
 actually use these settings instead.
 """
 
-# Camera
-CAMERA_INDEX = 0
-
-# Restricted zone, in pixel coordinates: (x1, y1) top-left, (x2, y2) bottom-right.
-# Matches backend/zones.py's current RESTRICTED_ZONE exactly.
-# NOTE: these are fixed pixel values, so they assume whatever resolution
-# your camera actually captures at (commonly 640x480) — if you change
-# cameras or resolution, these will need re-tuning.
-RESTRICTED_ZONE = (200, 150, 450, 400)  # x1, y1, x2, y2
+# ---------------------------------------------------------------------------
+# Cameras & Zones (Phase 3 Multi-Camera Support)
+# ---------------------------------------------------------------------------
+# Define all cameras here. Each camera needs an ID, a video source, a location
+# name, and a specific relative restricted zone (x1, y1, x2, y2).
+#   source: 0 for default webcam, 1 for USB webcam, or "rtsp://..." for IP cameras.
+#   zone: (0.0 to 1.0) relative to frame size. e.g., (0.3, 0.3, 0.7, 0.7) is center 40%.
+CAMERAS = [
+    {
+        "id": "Camera 1",
+        "source": 0,
+        "location": "Main Gate",
+        "zone": (0.30, 0.30, 0.70, 0.70)
+    },
+    # To add a second camera, uncomment and configure below:
+    # {
+    #     "id": "Camera 2",
+    #     "source": 1,
+    #     "location": "Back Door",
+    #     "zone": (0.10, 0.10, 0.90, 0.90)
+    # }
+]
 
 # Allowed hours (24-hour format). Outside this window counts as after-hours.
 ALLOWED_START_HOUR = 9    # 9:00 AM
